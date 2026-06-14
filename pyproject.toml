@@ -1,0 +1,18 @@
+[project]
+name = "nonebot_plugin_paste_emoji"
+version = "0.1.0"
+description = "Nonebot plugin for pasting emojis"
+requires-python = ">=3.12"
+dependencies = [
+    "nonebot2>=2.4.4,<3.0.0",
+    "nonebot-adapter-onebot>=2.4.6",
+]
+
+[authors]
+name = "Bluemangoo"
+
+[tool.nonebot]
+adapters = [
+    { "name" = "Onebot V11", module_name = "nonebot.adapters.onebot.v11" },
+]
+plugins = ["nonebot_plugin_paste_emoji"]
