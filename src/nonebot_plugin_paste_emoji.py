@@ -9,6 +9,8 @@ from nonebot.plugin.on import on_command
     utf-32-be: UTF-32 Big-Endian（大端序 UTF-32）保证了每个字符占用 4 个字节，即非组合的单个 emoji 一定占用一个字符。
     [:4] 取前 4 个字节(encode -> bytes)，确保我们只处理单个 emoji。同时 qq api 内表情 id 为 uint32，即 4 个字节。
         uint32 这点见 https://bot.q.qq.com/wiki/develop/api-v2/openapi/emoji/model.html
+        虽然 NTQQ 的 api 里用的是 string，但越界会有极为诡异的表现。
+        njs api: session.getMsgService().setMsgEmojiLikes (peer: Peer, msgSeq: string, emojiId: string, emojiType: string, setOrCancel: boolean)
     from_bytes 的 big 是端序，与 utf-32-be 保持一致。
     最后过滤一些特殊情况，这些字符直接用 ASCII 加上变体选择符 emoji，会直接与 QQ 系统表情 ID 冲突。以免歧义直接过滤掉。
 其它情况：
@@ -23,6 +25,7 @@ __plugin_meta__ = PluginMetadata(
     name="贴表情",
     description="QQ群 向命令这条消息贴指定表情，用于获取并传递表情。",
     usage="/贴表情 [表情ID] 或 /贴表情 [表情]",
+    homepage="https://github.com/Bluemangoo/nonebot_plugin_paste_emoji",
     extra={
         "author": "https://github.com/bluemangoo",
     },
