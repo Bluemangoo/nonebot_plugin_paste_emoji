@@ -1,7 +1,7 @@
 from typing import Tuple
 
 from nonebot import logger, Bot
-from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, GROUP
 from nonebot.internal.rule import Rule
 from nonebot.plugin import PluginMetadata
 from nonebot.plugin.on import on_command, on_message
@@ -74,12 +74,17 @@ def is_zhu(event: GroupMessageEvent):
     return (str(event.group_id), str(event.user_id)) in zhu_list
 
 
-paste_face = on_command("paste_face", aliases={"贴表情", "paste-face"}, priority=5, force_whitespace=True)
+paste_face = on_command("paste_face",
+                        aliases={"贴表情", "paste-face"},
+                        priority=5,
+                        permission=GROUP,
+                        force_whitespace=True)
 help_yourself = on_command("自㊗️餐", aliases={"自㊗餐"}, priority=5)
 stop_help_yourself = on_command("停止自㊗️餐",
                                 aliases={f"{i}自{j}餐" for i in ["停止", "结束", "关闭"] for j in ["㊗️", "㊗"]},
-                                priority=5)
-paste_it = on_message(rule=Rule(is_zhu), priority=6, block=False) # 5+1
+                                priority=5,
+                                permission=GROUP)
+paste_it = on_message(rule=Rule(is_zhu), priority=6, permission=GROUP, block=False)  # 5+1
 zhu_list: list[Tuple[str, str]] = []
 
 
