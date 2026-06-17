@@ -1,7 +1,10 @@
+from typing import Tuple
+
 from nonebot import logger, Bot
-from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent
+from nonebot.internal.rule import Rule
 from nonebot.plugin import PluginMetadata
-from nonebot.plugin.on import on_command
+from nonebot.plugin.on import on_command, on_message
 
 """
 对 emoji 的处理实质上是将其转换为对应的 unicode 编码。
@@ -18,8 +21,6 @@ from nonebot.plugin.on import on_command
     2. 以 u+/0x/u 开头或以 h 结尾的字符串，尝试解析为十六进制数。
     位运算看不明白自己补习去。
 """
-
-command = on_command("paste_face", aliases={"贴表情", "paste-face"}, priority=5, force_whitespace=True)
 
 __plugin_meta__ = PluginMetadata(
     name="贴表情",
@@ -46,7 +47,43 @@ def try_remove_suffixes(s: str, suffixes: list[str]) -> str | None:
     return None
 
 
-@command.handle()
+def try_parse_emoji(emoji_id: str) -> str | None:
+    if emoji_id.isnumeric():
+        emoji_int_id = int(emoji_id)
+        if emoji_int_id >> 32 > 0:
+            return None  # 越界
+    elif (stripped := try_remove_prefixes(emoji_id.lower(), ["u+", "0x", "u"])) or \
+            (stripped := try_remove_suffixes(emoji_id.lower(), ["h"])):
+        try:
+            emoji_int_id = int(stripped, 16)  # try parse as hex
+            if emoji_int_id >> 32 == 0:
+                emoji_id = str(emoji_int_id)
+            else:
+                return None  # 越界
+        except ValueError:
+            return None
+    else:
+        emoji_int_id = int.from_bytes(emoji_id.encode('utf-32-be')[:4], 'big')  # [:4] = uint32
+        if emoji_int_id <= 256:
+            return None  # Filter ascii: Emoji Keycap Sequences = 0-9/#/* + U+FE0F(VS16) + U+20E3
+        emoji_id = str(emoji_int_id)
+    return emoji_id
+
+
+def is_zhu(event: GroupMessageEvent):
+    return (str(event.group_id), str(event.user_id)) in zhu_list
+
+
+paste_face = on_command("paste_face", aliases={"贴表情", "paste-face"}, priority=5, force_whitespace=True)
+help_yourself = on_command("自㊗️餐", aliases={"自㊗餐"}, priority=5)
+stop_help_yourself = on_command("停止自㊗️餐",
+                                aliases={f"{i}自{j}餐" for i in ["停止", "结束", "关闭"] for j in ["㊗️", "㊗"]},
+                                priority=5)
+paste_it = on_message(rule=Rule(is_zhu), priority=6, block=False) # 5+1
+zhu_list: list[Tuple[str, str]] = []
+
+
+@paste_face.handle()
 async def _(event: MessageEvent, bot: Bot):
     args: list[str] = []
     for seg in event.message:
@@ -58,32 +95,54 @@ async def _(event: MessageEvent, bot: Bot):
             args.append(seg.data.get("id", ""))
 
     args = [arg for arg in args if arg][1:]  # 去掉命令本身
-    if len(args) != 1:
-        return
-    emoji_id: str = args[0]
-    if emoji_id.isnumeric():
-        emoji_int_id = int(emoji_id)
-        if emoji_int_id >> 32 > 0:
-            return  # 越界
-    elif (stripped := try_remove_prefixes(emoji_id.lower(), ["u+", "0x", "u"])) or \
-            (stripped := try_remove_suffixes(emoji_id.lower(), ["h"])):
+    emojis = [emoji for arg in args if (emoji := try_parse_emoji(arg)) is not None]
+    logger.debug(f"Parsed emoji_id: {emojis}")
+    message_id = event.message_id
+    if event.reply:
+        message_id = event.reply.message_id
+    for emoji_id in emojis:
+        payloads = {
+            "message_id": message_id,
+            "emoji_id": emoji_id,
+            "set": True
+        }
+        logger.debug(await bot.call_api("set_msg_emoji_like", **payloads))
+
+
+def parse_users(event: GroupMessageEvent) -> list[str]:
+    at: list[str] = []
+    for seg in event.message:
+        if seg.type == "at":
+            s = seg.data.get("qq", "")
+            if s and s != "all":
+                at.append(s)
+    if len(at) == 0:
+        at.append(str(event.user_id))
+    return at
+
+
+@help_yourself.handle()
+async def _(event: GroupMessageEvent):
+    for qq in parse_users(event):
+        zhu_list.append((str(event.group_id), qq))
+    await help_yourself.finish("用餐愉快")
+
+
+@stop_help_yourself.handle()
+async def _(event: GroupMessageEvent):
+    for qq in parse_users(event):
         try:
-            emoji_int_id = int(stripped, 16)  # try parse as hex
-            if emoji_int_id >> 32 == 0:
-                emoji_id = str(emoji_int_id)
-            else:
-                return  # 越界
+            zhu_list.remove((str(event.group_id), qq))
         except ValueError:
-            return
-    else:
-        emoji_int_id = int.from_bytes(emoji_id.encode('utf-32-be')[:4], 'big')  # [:4] = uint32
-        if emoji_int_id <= 256:
-            return  # Filter ascii: Emoji Keycap Sequences = 0-9/#/* + U+FE0F(VS16) + U+20E3
-        emoji_id = str(emoji_int_id)
-    logger.debug(f"Parsed emoji_id: {emoji_id}")
+            pass
+    await stop_help_yourself.finish("感谢您的光临")
+
+
+@paste_it.handle()
+async def _(event: GroupMessageEvent, bot: Bot):
     payloads = {
         "message_id": event.message_id,
-        "emoji_id": emoji_id,
+        "emoji_id": "12951",
         "set": True
     }
     logger.debug(await bot.call_api("set_msg_emoji_like", **payloads))
